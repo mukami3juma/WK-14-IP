@@ -1,0 +1,302 @@
+---
+title: "WK 14 IP"
+author: "Rachel Juma"
+date: "2/10/2022"
+output: html_document
+---
+
+Informing Carrefour's marketing department on the most relevant marketing strategies that will result in the highest no. of sales (total price including tax) in a four part unsupervised learning technique analysis and later providing recommendations based on found insights.
+
+## PART 1 - Dimensionality Reduction using PCA
+
+```{R}
+# reading and viewing dataset
+fd <- read.csv("http://bit.ly/CarreFourDataset")
+head(fd)
+str(fd)
+dim(fd)
+```
+
+```{r}
+# converting integer to number
+fd$Quantity <- as.numeric(fd$Quantity)
+str(fd)
+
+# create a dataframe with only non constant numerical variables
+fd1 <- fd[,c(6:8,12,14:16)]
+head(fd1)
+
+# performing pca on numerical variables
+library(devtools)
+fd.pca <- prcomp(fd1,center = TRUE,scale. = TRUE)
+fd.pca
+summary(fd.pca)
+```
+
+It produces 7 principal components with PC1 having the highest variance(70.31%),followed by PC2(14.29%), PC3(14.11%), PC4(1.3) while PC5,6 and 7 are significantly lower. cumulative prportion shows that y the time we are done with PC3,98.71% variability will have been explained hence we'll need only the first 3 PCAs.
+
+
+```{r}
+# cheching the structure of the principal components
+str(fd.pca)
+
+```
+
+
+```{r}
+# plotting the pca
+
+install.packages("usethis")
+library(devtools)
+
+install_github("vqv/ggbiplot")
+
+library(ggbiplot)
+ggbiplot(fd.pca)
+
+# shows relationship between pc1 and pc2
+```
+
+The graph shows Gross income,tax,cog and total are highly correlated due to their proximity to each other unlike rating. They are however negatively correlated to PC1 as they fall on the left side of the graph followed by quantity and unit price with negative correlation as well unlike rating that's positive.
+
+Rating on the other hand is highly correlated with PC2 and does so positively like every other variable. Quantity however has a negative correlation as it falls on the left side of PC2.
+
+We use the first two components as they explain 84.6% of variability.
+
+
+```{r}
+ 
+a <- ggbiplot(fd.pca, obs.scale = 1, var.scale = 1,groups = fd$Gender,ellipse=TRUE,ellipse.prob=0.68)
+a <- a+scale_color_discrete(name = '')
+a <- a + theme(legend.direction = 'horizontal',legend.position = 'top')
+
+print(a)
+
+```
+
+Pink borders enclose female indices while green enclose male. Ellipse probability chosen above shows 68% of the data is captured and increasing it's size means more data will be considered.
+
+```{r}
+
+ggbiplot(fd.pca,ellipse=FALSE, groups=fd$Total, obs.scale = 1, var.scale = 1)
+
+```
+
+The graph shows distributions of various totals showing a higher concentration of lower totals towards the right of PC1 while higher totals that are lower in concentration on the left side of PC1.
+
+## PART 2 - Feature Selection
+
+```{r}
+# Loading caret and correlation libraries
+library(caret)
+library(corrplot)
+
+# Determining correlation matrix using numerical variables
+head(fd1)
+corrmatrix <- cor(fd1)
+
+# Extracting highly correlated features with coeff of 0.8 and above
+
+highcorr <- findCorrelation(corrmatrix, cutoff=0.8)
+
+# Highly correlated attributes
+highcorr #shows the columns that are highlycorrelated
+
+names(fd1[,highcorr]) # to derive exact names of the columns to be dropped due to high correlation
+
+# we therefore remove these columns
+fd2 <- fd1[-highcorr]
+fd2
+# plot correlation graph for remaining variables
+
+par(mfrow = c(1, 2))
+corrplot(corrmatrix,method = 'number')
+corrplot(cor(fd2),method = 'number')
+```
+
+
+The gross income is positively influenced by unit price and quantity of commodity bought.
+
+## PART 3 - Association Rules to show relationships between variables
+
+```{r}
+# importing libraries
+
+library(Matrix)
+library(arules)
+
+# reading data
+data <- read.csv("http://bit.ly/SupermarketDatasetII") 
+head(data)
+
+transactions <- read.transactions("http://bit.ly/SupermarketDatasetII",sep = ",")
+transactions
+
+# Verifying the object's class
+class(transactions)
+
+
+# shows first 10 transactions
+inspect(transactions[1:10])
+
+# Creating table to show individual goods that are available in the dataset
+items<-as.data.frame(itemLabels(transactions))
+colnames(items) <- "Goods"
+items
+
+# Getting a summary of the transaction dataset to show the most purchased items,distribution of the item sets (no. of items purchased in each transaction)
+summary(transactions)
+```
+
+```{r}
+# Exploring the frequency of some articles 
+# i.e. transactions ranging from 10 to 15 and performing 
+# some operation in percentage terms of the total transactions 
+
+itemFrequency(transactions[, 10:15],type = "absolute")
+round(itemFrequency(transactions[, 10:15],type = "relative")*100,2)
+```
+
+```{r}
+# Producing a chart of frequencies and fitering 
+# to consider only items with a minimum percentage 
+# of support/ considering a top x of items
+# ---
+# Displaying top 10 most common items in the transactions dataset 
+# and the items whose relative importance is at least 15%
+# 
+par(mfrow = c(1, 2))
+
+# plot the frequency of items
+itemFrequencyPlot(transactions, topN = 15,col="pink")
+itemFrequencyPlot(transactions, support = 0.1,col="blue")
+``` 
+
+```{r}
+# Building an association rules model using apriori function with Min Support as 0.001 and confidence as 0.8
+
+rules <- apriori (transactions, parameter = list(supp = 0.001, conf = 0.8))
+rules
+```
+
+```{r}
+# We use measures of significance and interest on the rules, in order to determine which are interesting and which to discard.
+
+# However since we built the model using 0.001 Min support 
+# and confidence as 0.8 we obtained 74 rules.
+# However, in order to illustrate the sensitivity of the model to these two parameters, 
+# we will see what happens if we increase the support or lower the confidence level
+# 
+
+# Building a apriori model with Min Support as 0.002 and confidence as 0.8.
+rules1 <- apriori (transactions,parameter = list(supp = 0.002, conf = 0.8)) 
+
+# Building apriori model with Min Support as 0.001 and confidence as 0.7.
+rules2 <- apriori (transactions, parameter = list(supp = 0.001, conf = 0.7)) 
+
+rules1
+
+rules2
+```
+
+In our first example, we increased the minimum support of 0.001 to 0.002 and model rules went from 74 to 2. This would lead us to understand that using a high level of support can make the model lose interesting rules. In the second example, we decreased the minimum confidence level to 0.7 and the number of model rules went from 74 to 200 meaning that using a low confidence level increases the number of rules to quite an extent and many not be useful.
+
+```{r}
+# We can perform an exploration of our model 
+# through the use of the summary function as shown
+# Upon running the code, the function would give us information about the model 
+# i.e. the size of rules, depending on the items that contain these rules. 
+# In our above case, most rules have 3 and 4 items though some rules do have upto 6. 
+# More statistical information such as support, lift and confidence is also provided.
+# ---
+# 
+summary(rules)
+```
+
+```{r}
+# Observing rules built in our model i.e. first 5 model rules
+inspect(rules[1:5])
+```
+
+If someone buys frozen smoothie and spinach, they are 88.88% likely to buy mineral water too.
+
+```{r}
+# Ordering these rules by a criteria such as the level of confidence
+# then looking at the first five rules.
+# We can also use different criteria such as: (by = "lift" or by = "support")
+# 
+rules<-sort(rules, by="confidence", decreasing=TRUE)
+inspect(rules[1:5])
+
+```
+
+
+The first four rules have a confidence of 100% while the 5th has one of 95%.
+
+```{r}
+# If we're interested in making a promotion relating to the sale of shrimp, we could create a subset of rules concerning these products that would tell us the goods that the customers bought before purchasing shrimp
+ 
+shrimp <- subset(rules, subset = rhs %pin% "shrimp")
+shrimp
+# Then order by confidence
+shrimp<-sort(shrimp, by="confidence", decreasing=TRUE)
+inspect(shrimp[1:2])
+```
+
+## PART 4 - Anomaly Detection
+
+
+```{R}
+
+install.packages("anomalize")
+library(tidyverse)
+library(tibbletime)
+library(anomalize)
+library(timetk)
+
+# reading dataset
+df <-read.csv("http://bit.ly/CarreFourSalesDataset")
+head(df)
+str(df)
+
+# Change date character data type to Date format
+# Select only relevant columns in a new dataframe
+df$Date <- as.Date(df$Date,format = "%m/%d/%Y")
+
+
+# Convert df to a tibble
+df1 <- as_tibble(df)
+class(df1)
+str(df1)
+head(df1)
+
+# Converting a tibble to a `tbl_time`Using POSIXct index
+df2 <- tibble::tibble(
+  time  = as.POSIXct(df$Date),
+  value = c(1)
+)
+as_tbl_time(df2, time)
+df2
+
+sales <- df1[,c(2)]
+sales
+
+df3 = cbind(df2,sales)
+df3
+
+df3 <- as_tibble(df3)
+class(df3)
+head(df3)
+```
+
+```{R}
+# Detecting our anomalies and plotting using plot_anomaly_decomposition() to visualize out data.
+df_anomalized<-df3 %>%
+    time_decompose(Sales) %>%
+    anomalize(remainder) %>%
+    time_recompose() %>%
+    plot_anomalies(time_recomposed = TRUE, ncol = 3, alpha_dots = 0.5)
+
+df_anomalized %>% glimpse()
+```
+There are no anomalies.
